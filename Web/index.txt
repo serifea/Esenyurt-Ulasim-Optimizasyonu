@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Esenyurt Ulaşım Optimizasyonu</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+html, body, #map { height:100%; margin:0; }
+.header {
+    position:absolute; z-index:1000; top:10px; left:50px;
+    background:white; padding:12px 18px; border-radius:8px;
+    box-shadow:0 2px 8px #777; font-family:Arial;
+}
+.header h2 { margin:0 0 6px 0; font-size:18px; }
+.header p { margin:0; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="header">
+<h2>Esenyurt Ulaşım Optimizasyonu</h2>
+<p>10 yeni durak | 10/12 talep noktası | %91,44 nüfus kapsaması</p>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([41.03, 28.68], 12);
+
+// OpenStreetMap altlık haritası
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap katkıcıları'
+}).addTo(map);
+
+const overlays = {};
+const bounds = L.latLngBounds();
+
+async function addGeoJSON(file, name, color, radius=5, weight=2) {
+    const response = await fetch('data/' + file);
+    if (!response.ok) {
+        console.error('Dosya yüklenemedi:', file, response.status);
+        return;
+    }
+
+    const geojson = await response.json();
+
+    const layer = L.geoJSON(geojson, {
+        style: function(feature) {
+            return {
+                color: color,
+                weight: weight,
+                fillColor: color,
+                fillOpacity: 0.25
+            };
+        },
+        pointToLayer: function(feature, latlng) {
+            return L.circleMarker(latlng, {
+                radius: radius,
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.85,
+                weight: 2
+            });
+        },
+        onEachFeature: function(feature, layer) {
+            const props = feature.properties || {};
+            let content = '<b>' + name + '</b><hr>';
+            for (const [key, value] of Object.entries(props)) {
+                content += '<b>' + key + ':</b> ' + value + '<br>';
+            }
+            layer.bindPopup(content);
+        }
+    });
+
+    layer.addTo(map);
+    overlays[name] = layer;
+
+    layer.eachLayer(function(item) {
+        if (item.getBounds && item.getBounds().isValid()) {
+            bounds.extend(item.getBounds());
+        } else if (item.getLatLng) {
+            bounds.extend(item.getLatLng());
+        }
+    });
+
+    console.log(name + ' yüklendi:', geojson.features.length);
+}
+
+async function startMap() {
+    await addGeoJSON('mahalleler.geojson', 'Mahalleler', '#777777');
+    await addGeoJSON('mevcut_duraklar.geojson', 'Mevcut Duraklar', '#1565c0', 4);
+    await addGeoJSON('otobus_hatlari.geojson', 'Otobüs Hatları', '#e67e22', 2, 3);
+    await addGeoJSON('yaya_agi.geojson', 'Yaya Ağı', '#999999', 2, 1);
+    await addGeoJSON('talep_noktalari.geojson', 'Talep Noktaları', '#e53935', 7);
+    await addGeoJSON('durak_adaylari.geojson', 'Durak Adayları', '#8e44ad', 5);
+    await addGeoJSON('secilen_10_yeni_durak.geojson', 'Seçilen 10 Yeni Durak', '#00a000', 9);
+
+    L.control.layers(null, overlays, {collapsed:false}).addTo(map);
+
+    if (bounds.isValid()) {
+        map.fitBounds(bounds, {padding:[30,30]});
+    }
+}
+
+startMap().catch(error => console.error('Harita yükleme hatası:', error));
+</script>
+</body>
+</html>
